@@ -472,8 +472,6 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: !Ref CPUScalingTarget
-        ScaleInCooldown: 300
-        ScaleOutCooldown: 60
 
 # =============================================================================
 # OUTPUTS
