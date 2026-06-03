@@ -20,7 +20,7 @@ parameters:
   PublicSubnet2CIDR: 10.0.2.0/24
   PrivateSubnet1CIDR: 10.0.3.0/24
   PrivateSubnet2CIDR: 10.0.4.0/24
-  ASGMinSize: 1
-  ASGDesiredCapacity: 1
-  ASGMaxSize: 4
-  CPUScalingTarget: 30
+  ASGMinSize: "1"
+  ASGDesiredCapacity: "1"
+  ASGMaxSize: "4"
+  CPUScalingTarget: "30"
