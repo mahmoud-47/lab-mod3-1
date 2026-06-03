@@ -4,9 +4,6 @@ Description: >
   and an Application Load Balancer (ALB). Includes VPC, public/private subnets across
   2 AZs, NAT Gateway, ALB, Target Group, Launch Template, ASG, and scaling policies.
 
-# =============================================================================
-# PARAMETERS
-# =============================================================================
 Parameters:
   EnvironmentName:
     Type: String
@@ -20,12 +17,11 @@ Parameters:
       - t3.micro
       - t3.small
       - t3.medium
-    Description: EC2 instance type (t3.micro is free-tier eligible)
+    Description: EC2 instance type
 
   VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
-    Description: CIDR block for the VPC
 
   PublicSubnet1CIDR:
     Type: String
@@ -46,26 +42,19 @@ Parameters:
   ASGMinSize:
     Type: Number
     Default: 1
-    Description: Minimum number of instances in the ASG
 
   ASGDesiredCapacity:
     Type: Number
     Default: 1
-    Description: Desired number of instances in the ASG
 
   ASGMaxSize:
     Type: Number
     Default: 4
-    Description: Maximum number of instances in the ASG
 
   CPUScalingTarget:
     Type: Number
     Default: 30
-    Description: Target CPU utilization (%) to trigger scale-out
 
-# =============================================================================
-# RESOURCES
-# =============================================================================
 Resources:
 
   # ---------------------------------------------------------------------------
@@ -145,7 +134,7 @@ Resources:
           Value: !Sub "${EnvironmentName}-PrivateSubnet-AZ2"
 
   # ---------------------------------------------------------------------------
-  # NAT GATEWAY (Regional - in PublicSubnet1)
+  # NAT GATEWAY
   # ---------------------------------------------------------------------------
   NatGatewayEIP:
     Type: AWS::EC2::EIP
@@ -168,8 +157,6 @@ Resources:
   # ---------------------------------------------------------------------------
   # ROUTE TABLES
   # ---------------------------------------------------------------------------
-
-  # Public Route Table -> Internet Gateway
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -198,7 +185,6 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
-  # Private Route Table -> NAT Gateway
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -229,8 +215,6 @@ Resources:
   # ---------------------------------------------------------------------------
   # SECURITY GROUPS
   # ---------------------------------------------------------------------------
-
-  # ALB Security Group - allows HTTP from the internet
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -250,7 +234,6 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvironmentName}-ALB-SG"
 
-  # EC2 Security Group - only allows traffic from the ALB (no direct internet, no SSH)
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -265,13 +248,13 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-          Description: Allow all outbound (for NAT Gateway to reach internet)
+          Description: Allow all outbound
       Tags:
         - Key: Name
           Value: !Sub "${EnvironmentName}-EC2-SG"
 
   # ---------------------------------------------------------------------------
-  # IAM ROLE FOR EC2 (SSM access for stress testing demo - no SSH needed)
+  # IAM ROLE FOR EC2
   # ---------------------------------------------------------------------------
   EC2InstanceRole:
     Type: AWS::IAM::Role
@@ -315,7 +298,6 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvironmentName}-ALB"
 
-  # Target Group - EC2 instances register here
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -335,7 +317,6 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvironmentName}-TargetGroup"
 
-  # ALB Listener - routes HTTP:80 traffic to the Target Group
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -348,8 +329,8 @@ Resources:
 
   # ---------------------------------------------------------------------------
   # LAUNCH TEMPLATE
-  # The User Data script installs Apache and creates a web page
-  # displaying the instance ID and AZ for demo purposes.
+  # Fixed: Added IMDSv2, explicit EBS config, and DeleteOnTermination
+  # to satisfy AWS::EarlyValidation::PropertyValidation hook
   # ---------------------------------------------------------------------------
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -362,19 +343,27 @@ Resources:
           Arn: !GetAtt EC2InstanceProfile.Arn
         SecurityGroupIds:
           - !Ref EC2SecurityGroup
-        # No KeyName = no SSH access (as required)
+        # IMDSv2 required - fixes EarlyValidation hook
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 2
+        # Explicit EBS config - fixes EarlyValidation hook
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 8
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
             set -e
-            # Update packages
             dnf update -y
-            # Install Apache HTTP Server
             dnf install -y httpd stress
-            # Start and enable Apache
             systemctl start httpd
             systemctl enable httpd
-            # Fetch instance metadata
             TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
               -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
             INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
@@ -384,7 +373,6 @@ Resources:
             PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
               http://169.254.169.254/latest/meta-data/local-ipv4)
             LAUNCH_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-            # Write the web page
             cat > /var/www/html/index.html << EOF
             <!DOCTYPE html>
             <html lang="en">
@@ -473,8 +461,7 @@ Resources:
           PropagateAtLaunch: true
 
   # ---------------------------------------------------------------------------
-  # SCALING POLICY - Target Tracking on CPU Utilization
-  # Triggers scale-out when average CPU > 30%
+  # SCALING POLICY
   # ---------------------------------------------------------------------------
   CPUScalingPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
@@ -486,7 +473,7 @@ Resources:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: !Ref CPUScalingTarget
         ScaleInCooldown: 300
-        ScaleOutCooldown: 60  # Fast scale-out for demo purposes
+        ScaleOutCooldown: 60
 
 # =============================================================================
 # OUTPUTS
@@ -499,13 +486,13 @@ Outputs:
       Name: !Sub "${EnvironmentName}-VPCID"
 
   ALBDNSName:
-    Description: Application Load Balancer DNS Name - use this URL to access the app
+    Description: Application Load Balancer DNS Name
     Value: !Sub "http://${ALB.DNSName}"
     Export:
       Name: !Sub "${EnvironmentName}-ALB-DNS"
 
   ALBARNSuffix:
-    Description: ALB ARN Suffix (for CloudWatch metrics)
+    Description: ALB ARN Suffix
     Value: !GetAtt ALB.LoadBalancerFullName
 
   TargetGroupARN:
