@@ -1,0 +1,26 @@
+# CloudFormation GitSync Deployment Configuration
+# This file tells CloudFormation GitSync which template to deploy
+# and what parameters to use.
+#
+# How to use:
+#   1. Push this repo to GitHub
+#   2. In the AWS CloudFormation console, create a new stack
+#   3. Choose "Template is ready" -> "GitSync"
+#   4. Connect your GitHub repository
+#   5. Point to this file as the deployment configuration
+#   6. Any future push to the tracked branch auto-deploys changes
+
+template-file-path: ./template.yaml
+
+parameters:
+  EnvironmentName: AutoScalingLab
+  InstanceType: t3.micro
+  VpcCIDR: 10.0.0.0/16
+  PublicSubnet1CIDR: 10.0.1.0/24
+  PublicSubnet2CIDR: 10.0.2.0/24
+  PrivateSubnet1CIDR: 10.0.3.0/24
+  PrivateSubnet2CIDR: 10.0.4.0/24
+  ASGMinSize: 1
+  ASGDesiredCapacity: 1
+  ASGMaxSize: 4
+  CPUScalingTarget: 30
